@@ -30,7 +30,7 @@ public class NavigationalStrategy_ADAPTME : MonoBehaviour
     private float distanceBoatToDangerZone; // Variable already created for you for convenience: a measure of how far the boat is to the danger zones (so you might issue a warning to your user to change course...)
     private float angleBoatToDangerZone;
     private float[] dangerZoneDistances;
-    public int TriggerDistanceDangerZone = 10;
+    public int TriggerDistanceDangerZone = 1;
 
     /* --------------------------------------------------------
      * BELOW ARE THE VARIABLES THAT CAN TURN ON SPECIFIC PARTS OF THE HARDWARE
@@ -78,6 +78,21 @@ public class NavigationalStrategy_ADAPTME : MonoBehaviour
 
 
     //personal new vars
+    // hardcoding dangerzone locations in game for sound accuracy
+    private Vector3[] zonePositions =
+    {
+        new Vector3(41.26f, 0.13f, -44.70f),    // DangerZone1
+        new Vector3(34.76f, 0.13f, -13.60f),    // DangerZone2
+        new Vector3(14.16f, 0.13f, 33.10f),     // DangerZone3
+        new Vector3(-24.94f, 0.13f, -52.30f),   // DangerZone4
+        new Vector3(-43.14f, 0.13f, -16.20f),   // DangerZone5
+        new Vector3(-15.34f, 0.13f, 38.80f),    // DangerZone6
+        new Vector3(-8.64f, 0.13f, 110.00f),    // DangerZone7
+        new Vector3(44.16f, 0.13f, 44.10f),     // DangerZone8
+        new Vector3(90.96f, 0.13f, 2.90f),      // DangerZone9
+        new Vector3(86.86f, 0.13f, 133.50f),    // DangerZone10
+        new Vector3(-10.04f, 0.13f, -9.10f)     // DangerZone11
+    };
     public Transform songSphere;   // the sphere playing the song (e.g. Sound2)
     public float songDistance = 3f;     // how far from the boat the song sits
 
@@ -86,7 +101,7 @@ public class NavigationalStrategy_ADAPTME : MonoBehaviour
         Sound1On = (n == 1); Sound2On = (n == 2); Sound3On = (n == 3); Sound4On = (n == 4);
         Sound5On = (n == 5); Sound6On = (n == 6); Sound7On = (n == 7); Sound8On = (n == 8);
     }
-    private int[] zoneSound = { 1, 5, 6, 6, 7, 7, 8, 3, 5, 6, 7 };
+    private int[] zoneSound = { 3, 4, 8, 5, 7, 6, 7, 8, 5, 6, 7 };
     private AudioSource songSource;      // with your other fields
     void Awake()
     {
@@ -100,6 +115,18 @@ public class NavigationalStrategy_ADAPTME : MonoBehaviour
         startingTimeMillisec = (((DateTime.Now.Hour * 3600) + (DateTime.Now.Minute * 60) + DateTime.Now.Second) * 1000) + DateTime.Now.Millisecond;
         filename = Application.dataPath + "/SavedData/" + date + "--" + time + "--GroupName-" + GroupName + ".csv"; // This will be the name of your excel file in which all data is stored
 
+        TargetLocator tl = eventManager.GetComponent<TargetLocator>();
+        GameObject[] zones =
+        {
+            tl.DangerZone1, tl.DangerZone2, tl.DangerZone3, tl.DangerZone4,
+            tl.DangerZone5, tl.DangerZone6, tl.DangerZone7, tl.DangerZone8,
+            tl.DangerZone9, tl.DangerZone10, tl.DangerZone11
+        };
+        for (int i = 0; i < zones.Length; i++)
+        {
+            zones[i].transform.position = zonePositions[i];
+        }
+        
         // Setting up Danger Zone locations
         DangerZoneLocations = new List<Vector3>();
         DangerZoneLocations.Add(eventManager.GetComponent<TargetLocator>().DangerZone1.transform.position);
@@ -296,7 +323,7 @@ public class NavigationalStrategy_ADAPTME : MonoBehaviour
         {
             Hairdryer1Ventilator = 0.0f;
             Hairdryer2Ventilator = 0.0f;
-            Debug.Log("All danger zones cleared - turning off hairdryers");
+            // Debug.Log("All danger zones cleared - turning off hairdryers");
             allDistancesSafe = false;
         }
 
