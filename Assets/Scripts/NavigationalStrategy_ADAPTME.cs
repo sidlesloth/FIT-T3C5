@@ -78,7 +78,6 @@ public class NavigationalStrategy_ADAPTME : MonoBehaviour
 
 
     //personal new vars
-    public AudioSource 
     void Awake()
     {
         Debug.Log($"Trial started for group: {GroupName}"); 
