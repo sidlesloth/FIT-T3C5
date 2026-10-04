@@ -1,74 +1,57 @@
 using UnityEngine;
 using System;
-using System.IO;
+using System.IO; 
+using System.Text;
 using System.Collections.Generic;
 
 public class NavigationalStrategy_ADAPTME : MonoBehaviour
 {
-    /* ============================================================
-     *  THE LANTERN KEEPER'S ROUTE
-     *  Multimodal navigation through the Veiled Sound.
-     *  Three guardians, three senses, one lighthouse.
-     * ============================================================ */
+    /* --------------------------------------------------------
+     * STUDENT VERSION
+     * --------------------------------------------------------
+     */
 
-    [Header("Group")]
-    public string GroupName = "Group";
+    [SerializeField]
+    public string GroupName = "Group 5"; // ADAPT: add your group name here (in one word, e.g. 'Group-Anne-James-Louise').
 
-    [Header("Scene References")]
-    [SerializeField] private GameObject RowBoatPrefab;
-    [SerializeField] private GameObject lighthousePrefab; // assign in inspector, or auto-found
+    // Reference to boat
+    [SerializeField]
+    private GameObject RowBoatPrefab;
 
-    // ============================================================
-    //  STEP 2 — CHECKPOINTS (the three guardians)
-    // ============================================================
-    [Header("Guardian Checkpoints (order matters)")]
-    [Tooltip("Positions of the three guardians. Slot 0 = Ember, 1 = Bell, 2 = Kite. " +
-             "Keep all of these >50 units from the lighthouse so TargetLocator doesn't mute cues.")]
-    public Vector3[] checkpointPositions = new Vector3[3];
+    GameObject eventManager;
+    string filename = "";
+    private string date;
+    private string time;
+    private int startingTimeMillisec;
+    private float nextWriteTime = 0f;
+    private float PrivateAngleOfLighthouseToBoat; // Easy shorthand for us to utilise the angle of the lighthouse relative to the boat which we get from the TargetLocator script.
 
-    [Tooltip("Which modality each checkpoint unlocks. 0 = Heat, 1 = Airflow, 2 = Audio.")]
-    public int[] checkpointModalityIndex = new int[] { 0, 1, 2 };
+    private List<Vector3> DangerZoneLocations; // A list of danger zone positions, which you can access (and which are printed in the console at the start)
+    private float distanceBoatToDangerZone; // Variable already created for you for convenience: a measure of how far the boat is to the danger zones (so you might issue a warning to your user to change course...)
+    private float angleBoatToDangerZone;
+    private float[] dangerZoneDistances;
+    public int TriggerDistanceDangerZone = 20;
 
-    [Tooltip("Reach radius for each checkpoint.")]
-    public float checkpointReachRadius = 8f;
+    /* --------------------------------------------------------
+     * BELOW ARE THE VARIABLES THAT CAN TURN ON SPECIFIC PARTS OF THE HARDWARE
+     * - TurnOnHeater variables turn on specific heater towers or individual heaters. The variable is binary, so either true (= on) or false (= off).
+     * - The Hairdryer1Ventilator and Hairdryer2Ventilator variabls indicates which of the two hair dryer ventilators are on (currently positioned as 1 = right and 2 = left). The variable is a float, meaning that you can change the intensity of the ventialtors (0.5f = 50%, 1.0f = 100% etc., make sure to add the 'f' after the number to indicate to Unity it is a float). Make sure not to go below 0.2f (=20% intensity), because at the low levels the ventialtor behaves unstable.
+     * --------------------------------------------------------
+     */
 
-    // ============================================================
-    //  STEP 7 — PUZZLE: angle window for each checkpoint
-    //  You must approach the guardian within this angular window,
-    //  otherwise the guardian stays "unsolved" and won't join.
-    // ============================================================
-    [Header("Guardian Trial — Approach Angle Window")]
-    [Tooltip("Half-width in degrees. You must be facing the guardian within ±this to solve.")]
-    public float trialAngleWindow = 25f;
+    // Bools for turning on specific heaters (as in the example)
+    public bool TurnOnHeatTOWERLEFT = false; // Turns on heaters 1 (upper) and 2 (bottom) to the left of the user
+    public bool TurnOnHeatTOWERRIGHT = false; // Turns on heaters 3 (upper) and 4 (bottom) to the right of the user
+    public bool TurnOnHeatTOWERBACK = false; // Turns on heaters 5 (upper) and 6 (bottom) behind the user
+    public bool TurnOnHeatTOWERFRONT = false; // Turns on heaters 7 (upper) and 8 (bottom) in front of the user
 
-    [Tooltip("Only require the angle window once you are this close (so you don't fail from far away).")]
-    public float trialAngleCheckDistance = 20f;
-
-    // ============================================================
-    //  RUNTIME STATE
-    // ============================================================
-    private int activeCheckpointIndex = 0;
-    private bool heatUnlocked = false;
-    private bool airflowUnlocked = false;
-    private bool audioUnlocked = false;
-
-    // Step 4 — "guardian joins" sting
-    private float guardianStingUntilTime = 0f;
-    private const float GUARDIAN_STING_DURATION = 1.5f;
-
-    // ============================================================
-    //  HARDWARE INTERFACE (do not rename — CuesActuator + SoundController read these)
-    // ============================================================
-    public bool TurnOnHeatTOWERLEFT = false;
-    public bool TurnOnHeatTOWERRIGHT = false;
-    public bool TurnOnHeatTOWERBACK = false;
-    public bool TurnOnHeatTOWERFRONT = false;
-
+    // Ignore but keep bools below, for visualisation purposes only
     public bool TurnOnHeaterLEFT = false;
     public bool TurnOnHeaterLEFTMIDDLE = false;
     public bool TurnOnHeaterRIGHTMIDDLE = false;
     public bool TurnOnHeaterRIGHT = false;
 
+    // To be used if you want to turn on specific heaters
     public bool TurnOnHeater1 = false;
     public bool TurnOnHeater2 = false;
     public bool TurnOnHeater3 = false;
@@ -78,10 +61,12 @@ public class NavigationalStrategy_ADAPTME : MonoBehaviour
     public bool TurnOnHeater7 = false;
     public bool TurnOnHeater8 = false;
 
+    // Floats to turn on specific hairdryers
     public float Hairdryer1Ventilator = 0f;
     public float Hairdryer2Ventilator = 0f;
-    public bool ShutDownHairdryers = false;
+    public bool ShutDownHairdryers = false; // Code to turn off hairdryers
 
+    // Bools for auditory cues
     public bool Sound1On = false;
     public bool Sound2On = false;
     public bool Sound3On = false;
@@ -91,191 +76,166 @@ public class NavigationalStrategy_ADAPTME : MonoBehaviour
     public bool Sound7On = false;
     public bool Sound8On = false;
 
-    // ============================================================
-    //  SAFETY CONSTANTS (slide 95)
-    // ============================================================
-    private const float HAIRDRYER_MIN_PWM = 0.2f;
-    private const int MAX_HEAT_TOWERS_ON = 2;
 
-    // ============================================================
-    //  DATA + LOGGING
-    // ============================================================
-    GameObject eventManager;
-    string filename = "";
-    private string date;
-    private string time;
-    private int startingTimeMillisec;
-    private float nextWriteTime = 0f;
-
-    private float PrivateAngleOfCurrentTarget;
-
-    private List<Vector3> DangerZoneLocations;
-    private float distanceBoatToDangerZone;
-    private float angleBoatToDangerZone;
-    private float[] dangerZoneDistances;
-    public int TriggerDistanceDangerZone = 20;
-
-    // Step 8 — evaluation metrics
-    private int[] checkpointsReachedAtMs;
-    private int dangerZoneHits = 0;
-    private bool wasInDangerLastFrame = false;
-
+    //personal new vars
+    public AudioSource 
     void Awake()
     {
-        Debug.Log($"Trial started for group: {GroupName} — The Lantern Keeper's Route");
+        Debug.Log($"Trial started for group: {GroupName}"); 
 
-        eventManager = GameObject.Find("EventManager");
-
-        if (lighthousePrefab == null)
-        {
-            lighthousePrefab = GameObject.Find("Lighthouse");
-        }
-
+        eventManager = GameObject.Find("EventManager"); // Get the GameControl object such that we can access other scripts and variables
+        
+        // General information for output documentation 
         date = DateTime.Now.ToString("dd-MM-yyyy");
         time = DateTime.Now.ToString("HH-mm-ss");
         startingTimeMillisec = (((DateTime.Now.Hour * 3600) + (DateTime.Now.Minute * 60) + DateTime.Now.Second) * 1000) + DateTime.Now.Millisecond;
-        filename = Application.dataPath + "/SavedData/" + date + "--" + time + "--GroupName-" + GroupName + ".csv";
+        filename = Application.dataPath + "/SavedData/" + date + "--" + time + "--GroupName-" + GroupName + ".csv"; // This will be the name of your excel file in which all data is stored
 
+        // Setting up Danger Zone locations
         DangerZoneLocations = new List<Vector3>();
-        var tl = eventManager.GetComponent<TargetLocator>();
-        DangerZoneLocations.Add(tl.DangerZone1.transform.position);
-        DangerZoneLocations.Add(tl.DangerZone2.transform.position);
-        DangerZoneLocations.Add(tl.DangerZone3.transform.position);
-        DangerZoneLocations.Add(tl.DangerZone4.transform.position);
-        DangerZoneLocations.Add(tl.DangerZone5.transform.position);
-        DangerZoneLocations.Add(tl.DangerZone6.transform.position);
-        DangerZoneLocations.Add(tl.DangerZone7.transform.position);
-        DangerZoneLocations.Add(tl.DangerZone8.transform.position);
-        DangerZoneLocations.Add(tl.DangerZone9.transform.position);
-        DangerZoneLocations.Add(tl.DangerZone10.transform.position);
-        DangerZoneLocations.Add(tl.DangerZone11.transform.position);
+        DangerZoneLocations.Add(eventManager.GetComponent<TargetLocator>().DangerZone1.transform.position);
+        DangerZoneLocations.Add(eventManager.GetComponent<TargetLocator>().DangerZone2.transform.position);
+        DangerZoneLocations.Add(eventManager.GetComponent<TargetLocator>().DangerZone3.transform.position);
+        DangerZoneLocations.Add(eventManager.GetComponent<TargetLocator>().DangerZone4.transform.position);
+        DangerZoneLocations.Add(eventManager.GetComponent<TargetLocator>().DangerZone5.transform.position);
+        DangerZoneLocations.Add(eventManager.GetComponent<TargetLocator>().DangerZone6.transform.position);
+        DangerZoneLocations.Add(eventManager.GetComponent<TargetLocator>().DangerZone7.transform.position);
+        DangerZoneLocations.Add(eventManager.GetComponent<TargetLocator>().DangerZone8.transform.position);
+        DangerZoneLocations.Add(eventManager.GetComponent<TargetLocator>().DangerZone9.transform.position);
+        DangerZoneLocations.Add(eventManager.GetComponent<TargetLocator>().DangerZone10.transform.position);
+        DangerZoneLocations.Add(eventManager.GetComponent<TargetLocator>().DangerZone11.transform.position);
 
         dangerZoneDistances = new float[DangerZoneLocations.Count];
-        checkpointsReachedAtMs = new int[checkpointPositions.Length];
-        for (int i = 0; i < checkpointsReachedAtMs.Length; i++) checkpointsReachedAtMs[i] = -1;
+
     }
 
-    // ============================================================
-    //  STEP 1 — CURRENT TARGET ABSTRACTION
-    // ============================================================
-    private bool CurrentTargetIsCheckpoint()
-    {
-        return activeCheckpointIndex < checkpointPositions.Length;
-    }
+    /* CALLING SPECIFIC DANGER ZONES
+     * Example of calling the location of a danger zone: 
+     * eventManager.GetComponent<TargetLocator>().DangerZone1.transform.position
+     */
 
-    private Vector3 GetCurrentTargetPosition()
-    {
-        if (CurrentTargetIsCheckpoint())
-            return checkpointPositions[activeCheckpointIndex];
+    /* EXAMPLE OF A NAVIGATIONAL STRATEGY
+     * Example thermal:
+     * The thermal cues are used to lead a person towards the lighthouse, with the panel turning on that allows a user to point towards the lighthouse.
+     * The angle at which the lighthouse is located with respect to the boat is used to determine which heater should be turned on.
+     * Heaters stay continuously turned on.
+     * 
+     * Example airflow:
+     * Changing the value of the hair dryer ventilators.
+     * 
+     * Example sound: we turn on one of the sound prefabs. Note: the sound prefabs are located 360deg around the user, so the orientation
+     * is different from the other modalities. If you want, you can adapt the location of the prefabs by referencing them here as is done in the 
+     * SoundController.cs script and updating their position to your preferred position by changing their coordinates in the Update void.
+     * Because of the 360deg positioning of the sound prefabs, moving and turning the boat does not change where the sound is coming from (after all,
+     * the sound prefabs stay exactly the same relative to the boat). 
+    */
 
-        if (lighthousePrefab != null)
-            return lighthousePrefab.transform.position;
-
-        return RowBoatPrefab.transform.position; // fallback, no movement
-    }
-
-    private float GetAngleToCurrentTarget()
-    {
-        Vector3 dir = GetCurrentTargetPosition() - RowBoatPrefab.transform.position;
-        Vector3 horiz = new Vector3(dir.x, 0f, dir.z);
-        return Vector3.SignedAngle(RowBoatPrefab.transform.forward, horiz, Vector3.up);
-    }
-
-    // ============================================================
-    //  UPDATE
-    // ============================================================
     void Update()
     {
-        if (eventManager == null || RowBoatPrefab == null) return;
+        //Debug.Log($"The angle of the lighthouse with respect to the boat is: {eventManager.GetComponent<TargetLocator>().angleOfLighthouseToBoat:F2}"); // Example of how you can print what the relative angle of the lighthouse is. This cloggs up the console, so comment this out for readability of the other print statements
+        PrivateAngleOfLighthouseToBoat = eventManager.GetComponent<TargetLocator>().angleOfLighthouseToBoat; // Put it in our local shorthand. Note: this is an unnecessary step as we can continuously get the value directly from the TargetLocator script, but to avoid typo's and reference mistakes we make the transfer here.
+        
+        /* INTERPRETING THE PrivateAngleOfLighthouseToBoat VARIABLE
+         * The PrivateAngleOfLighthouseToBoat variable provides a value between -180 and +180. Between -180 and 0 are the angles to the left of the boat; 0 to +180 are to the right of the boat.
+         * So if we want to have the correct heater on to steer a user according to where the tower is; we can turn on specific heat sources when we have a specific angle. Because of the placement of the heaters
+         * in real life (placed in a half circle in front of the user), the angles of -180 to -60 and +60 to +180 belong to the outermost left and right heater respectively.
+         */
 
-        var tl = eventManager.GetComponent<TargetLocator>();
-        if (tl == null || tl.EndScene) return;
-
-        PrivateAngleOfCurrentTarget = GetAngleToCurrentTarget();
-
-        // --- Step 2/3/4: checkpoint progression ---
-        UpdateCheckpointProgression();
-
-        // --- Step 6: gather danger info first, because it can override ---
-        bool dangerThreatActive = UpdateDangerZones();
-
-        // --- Step 5: emit cues for the current target ---
-        if (!dangerThreatActive)
+        if (!eventManager.GetComponent<TargetLocator>().EndScene) // If we are not yet at the lighthouse, keep this line in and adapt your navigational strategy below
         {
-            EmitTargetCues();
+
+            if (!eventManager.GetComponent<TargetLocator>().EndScene) // If we are not yet at the lighthouse, we need to navigate towards it. Keep this line in and adapt your navigational strategy within this if-statement.
+            {
+                if (PrivateAngleOfLighthouseToBoat >= -45.0f && PrivateAngleOfLighthouseToBoat <= 45.0f) // The lighthouse is in front of the user
+                {
+                    TurnOnHeatTOWERFRONT = true; // This is the heater we want to turn on
+                    TurnOnHeatTOWERRIGHT = false; // All other heaters get turned off
+                    TurnOnHeatTOWERBACK = false;
+                    TurnOnHeatTOWERLEFT = false;
+                    
+                    // Example sound:
+                    Sound1On = true;
+                    Sound2On = false;
+                    Sound3On = false;
+                    Sound4On = false;
+                    Sound5On = false;
+                    Sound6On = false;
+                    Sound7On = false;
+                    Sound8On = false;
+                }
+                else if (PrivateAngleOfLighthouseToBoat > 45.0f && PrivateAngleOfLighthouseToBoat <= 135.0f)
+                {
+                    TurnOnHeatTOWERFRONT = false;
+                    TurnOnHeatTOWERRIGHT = true; // This is the heater we want to turn on
+                    TurnOnHeatTOWERBACK = false;
+                    TurnOnHeatTOWERLEFT = false;
+
+                    // Example sound
+                    Sound1On = false;
+                    Sound2On = true;
+                    Sound3On = false;
+                    Sound4On = false;
+                    Sound5On = false;
+                    Sound6On = false;
+                    Sound7On = false;
+                    Sound8On = false;
+                }
+
+                else if (PrivateAngleOfLighthouseToBoat > 135.0f || PrivateAngleOfLighthouseToBoat <= -135.0f)
+                {
+                    TurnOnHeatTOWERFRONT = false;
+                    TurnOnHeatTOWERRIGHT = false;
+                    TurnOnHeatTOWERBACK = true; // This is the heater we want to turn on
+                    TurnOnHeatTOWERLEFT = false;
+
+                    // Example sound
+                    Sound1On = false;
+                    Sound2On = false;
+                    Sound3On = true;
+                    Sound4On = false;
+                    Sound5On = false;
+                    Sound6On = false;
+                    Sound7On = false;
+                    Sound8On = false;
+                }
+                else if (PrivateAngleOfLighthouseToBoat > -135.0f && PrivateAngleOfLighthouseToBoat < -45.0f)
+                {
+                    TurnOnHeatTOWERFRONT = false;
+                    TurnOnHeatTOWERRIGHT = false;
+                    TurnOnHeatTOWERBACK = false;
+                    TurnOnHeatTOWERLEFT = true; // This is the heater we want to turn on
+
+                    // Example sound
+                    Sound1On = false;
+                    Sound2On = false;
+                    Sound3On = false;
+                    Sound4On = true;
+                    Sound5On = false;
+                    Sound6On = false;
+                    Sound7On = false;
+                    Sound8On = false;
+                }
+
+                // Ignore processing step below
+                TurnOnHeaterLEFT = TurnOnHeatTOWERLEFT;
+                TurnOnHeaterLEFTMIDDLE = TurnOnHeatTOWERRIGHT;
+                TurnOnHeaterRIGHTMIDDLE = TurnOnHeatTOWERBACK;
+                TurnOnHeaterRIGHT = TurnOnHeatTOWERFRONT;
+
+            }
         }
 
-        // --- Step 8: logging ---
-        if (Time.time >= nextWriteTime)
-        {
-            WriteCSV();
-            nextWriteTime = Time.time + 1f;
-        }
-    }
-
-    // ============================================================
-    //  STEP 2 + 3 + 4 + 7 — CHECKPOINT PROGRESSION
-    // ============================================================
-    void UpdateCheckpointProgression()
-    {
-        if (!CurrentTargetIsCheckpoint()) return;
-
-        Vector3 cp = checkpointPositions[activeCheckpointIndex];
-        Vector3 boatPos = RowBoatPrefab.transform.position;
-        float dist = Vector3.Distance(cp, boatPos);
-
-        if (dist <= checkpointReachRadius)
-        {
-            // Step 7 — trial: must be facing the guardian within the angle window
-            float angleToCP = GetAngleToCurrentTarget();
-
-            bool angleOK = true;
-            if (dist <= trialAngleCheckDistance)
-            {
-                angleOK = Mathf.Abs(angleToCP) <= trialAngleWindow;
-            }
-
-            if (!angleOK)
-            {
-                // Not solved yet — emit a "wrong approach" cue (short hairdryer pulse)
-                // We stay put; player must reorient.
-                return;
-            }
-
-            // --- SOLVED ---
-            int modality = (activeCheckpointIndex < checkpointModalityIndex.Length)
-                ? checkpointModalityIndex[activeCheckpointIndex]
-                : -1;
-
-            switch (modality)
-            {
-                case 0: heatUnlocked = true;    Debug.Log("Ember joins — HEAT unlocked.");    break;
-                case 1: airflowUnlocked = true; Debug.Log("Bell joins — AIRFLOW unlocked."); break;
-                case 2: audioUnlocked = true;   Debug.Log("Kite joins — AUDIO unlocked.");   break;
-            }
-
-            // Step 4 — guardian sting
-            guardianStingUntilTime = Time.time + GUARDIAN_STING_DURATION;
-
-            checkpointsReachedAtMs[activeCheckpointIndex] =
-                (((DateTime.Now.Hour * 3600) + (DateTime.Now.Minute * 60) + DateTime.Now.Second) * 1000)
-                + DateTime.Now.Millisecond - startingTimeMillisec;
-
-            activeCheckpointIndex++;
-        }
-    }
-
-    // ============================================================
-    //  STEP 6 — DANGER ZONES (returns true if a repulsion override is active)
-    // ============================================================
-    bool UpdateDangerZones()
-    {
-        bool overrideActive = false;
-        bool inAnyDanger = false;
-
+        /* EXAMPLE: checking if we are getting close to a danger zone
+         * Based on the position of the danger zones, we check how close we are (remember that the circles have a range of 10 units).
+         * I'll leave it to you to implement the right cues to avoid a user hitting a danger zone!
+         */
+        // Reset all distances to infinity
         for (int i = 0; i < dangerZoneDistances.Length; i++)
+        {
             dangerZoneDistances[i] = float.MaxValue;
+        }
 
+        // Calculate distances to all danger zones
         int index = 0;
         foreach (Vector3 DZlocation in DangerZoneLocations)
         {
@@ -283,164 +243,77 @@ public class NavigationalStrategy_ADAPTME : MonoBehaviour
             angleBoatToDangerZone = CalculateAngleToDangerZone(DZlocation);
             dangerZoneDistances[index++] = distanceBoatToDangerZone;
 
+            //Debug.Log($"Distance of boat to danger zone = {distanceBoatToDangerZone}");
+
+            // Check if we're close to this danger zone
             if (distanceBoatToDangerZone < TriggerDistanceDangerZone)
             {
-                inAnyDanger = true;
+                Debug.Log("We're getting really close to a danger zone... Watch out!");
 
-                // Repulsion via hairdryers (existing pattern), with safety clamp
+                // ---------------------------------------------------------
+                // Turning on hairdryers to blow us away from the danger
+                //
+                // 0�   = danger directly in front
+                // 90�  = danger on the right  -> Hairdryer 1 maximum
+                // 180� = danger directly behind
+                // 270� = danger on the left   -> Hairdryer 2 maximum
+                // ---------------------------------------------------------
+
                 if (angleBoatToDangerZone <= 180f)
                 {
+                    // Right side
+                    // 0�   -> 0
+                    // 90�  -> 1
+                    // 180� -> 0
+
                     Hairdryer1Ventilator = Mathf.Sin(angleBoatToDangerZone * Mathf.Deg2Rad);
                     Hairdryer2Ventilator = 0f;
                 }
                 else
                 {
+                    // Left side
+                    // 180� -> 0
+                    // 270� -> 1
+                    // 360� -> 0
+
                     Hairdryer1Ventilator = 0f;
                     Hairdryer2Ventilator = Mathf.Sin((360f - angleBoatToDangerZone) * Mathf.Deg2Rad);
                 }
 
-                overrideActive = true;
             }
         }
 
-        // Safety clamp
-        if (Hairdryer1Ventilator > 0f && Hairdryer1Ventilator < HAIRDRYER_MIN_PWM) Hairdryer1Ventilator = HAIRDRYER_MIN_PWM;
-        if (Hairdryer2Ventilator > 0f && Hairdryer2Ventilator < HAIRDRYER_MIN_PWM) Hairdryer2Ventilator = HAIRDRYER_MIN_PWM;
-
-        // Turn off if all clear
-        bool allClear = true;
-        foreach (float d in dangerZoneDistances)
-            if (d < 30f) { allClear = false; break; }
-
-        if (allClear && (Hairdryer1Ventilator > 0f || Hairdryer2Ventilator > 0f))
+        // Check if we should turn off all hairdryers
+        bool allDistancesSafe = true;
+        foreach (float distance in dangerZoneDistances)
         {
-            Hairdryer1Ventilator = 0f;
-            Hairdryer2Ventilator = 0f;
-        }
-
-        // Logging
-        if (inAnyDanger && !wasInDangerLastFrame) dangerZoneHits++;
-        wasInDangerLastFrame = inAnyDanger;
-
-        return overrideActive;
-    }
-
-    // ============================================================
-    //  STEP 5 — EMIT CUES FOR THE CURRENT TARGET
-    //  Each guardian uses a distinct modality. Also respects unlocks.
-    // ============================================================
-    void EmitTargetCues()
-    {
-        float angle = PrivateAngleOfCurrentTarget;
-
-        // --- If a guardian sting is playing, override everything for a moment ---
-        if (Time.time < guardianStingUntilTime)
-        {
-            EmitGuardianSting();
-            return;
-        }
-
-        // --- Determine which modality to use for THIS leg ---
-        int modalityForThisLeg = GetModalityForCurrentLeg();
-
-        // Reset all continuous outputs first
-        TurnOnHeatTOWERLEFT = TurnOnHeatTOWERRIGHT = TurnOnHeatTOWERBACK = TurnOnHeatTOWERFRONT = false;
-
-        switch (modalityForThisLeg)
-        {
-            case 0: // HEAT
-                if (heatUnlocked) EmitHeatCue(angle);
+            if (distance < 30)
+            {
+                allDistancesSafe = false;
                 break;
-
-            case 1: // AIRFLOW
-                if (airflowUnlocked) EmitAirflowCue(angle);
-                break;
-
-            case 2: // AUDIO
-                if (audioUnlocked) EmitAudioCue(angle);
-                break;
+            }
         }
-    }
 
-    int GetModalityForCurrentLeg()
-    {
-        // While heading to a guardian: use the PREVIOUS guardian's modality
-        // (i.e. the most recently unlocked one). The first leg falls back to audio
-        // so the player always has something to follow.
-        if (activeCheckpointIndex == 0) return 2;             // audio
-        return checkpointModalityIndex[activeCheckpointIndex - 1];
-    }
-
-    // ---- HEAT ----
-    void EmitHeatCue(float angle)
-    {
-        // Respect safety: max 2 towers on at a time.
-        // We use ONE tower for a clean directional signal.
-        if (angle >= -45f && angle <= 45f)            TurnOnHeatTOWERFRONT = true;
-        else if (angle > 45f && angle <= 135f)         TurnOnHeatTOWERRIGHT = true;
-        else if (angle > 135f || angle <= -135f)       TurnOnHeatTOWERBACK = true;
-        else if (angle > -135f && angle < -45f)        TurnOnHeatTOWERLEFT = true;
-
-        // Mirror to grouped bools for CuesActuator
-        TurnOnHeaterLEFT        = TurnOnHeatTOWERLEFT;
-        TurnOnHeaterLEFTMIDDLE  = TurnOnHeatTOWERRIGHT;
-        TurnOnHeaterRIGHTMIDDLE = TurnOnHeatTOWERBACK;
-        TurnOnHeaterRIGHT       = TurnOnHeatTOWERFRONT;
-    }
-
-    // ---- AIRFLOW ----
-    void EmitAirflowCue(float angle)
-    {
-        // Hairdryer 1 = right, Hairdryer 2 = left (per the original example)
-        // Intensity scales with |angle| so "more to the side" = stronger.
-        float mag = Mathf.Clamp01(Mathf.Abs(angle) / 135f);
-
-        if (angle > 0f)
+        if (allDistancesSafe && (Hairdryer1Ventilator > 0 | Hairdryer2Ventilator > 0)) // Only if the hairdryer is not already on 0
         {
-            Hairdryer1Ventilator = Mathf.Max(HAIRDRYER_MIN_PWM, mag);
-            Hairdryer2Ventilator = 0f;
+            Hairdryer1Ventilator = 0.0f;
+            Hairdryer2Ventilator = 0.0f;
+            Debug.Log("All danger zones cleared - turning off hairdryers");
+            allDistancesSafe = false;
         }
-        else
+
+
+        /* FOR YOU TO FIGURE OUT: GETTING CLOSE TO THE EDGE OF THE PLAYING FIELD
+         * If your player gets to the edge of the playing field, they might not notice that they are not moving forward (because they do not see their movement) and get stuck. How can you avoid this? Implement this in your navigational strategy!
+         */
+
+        if (Time.time >= nextWriteTime) // For logging purposes
         {
-            Hairdryer1Ventilator = 0f;
-            Hairdryer2Ventilator = Mathf.Max(HAIRDRYER_MIN_PWM, mag);
+            WriteCSV(); // Log the movement of the boat at every frame at once per second for you to analyse. 
+            nextWriteTime = Time.time + 1f;  // Set next write time to 1 second from now.
         }
     }
 
-    // ---- AUDIO ----
-    void EmitAudioCue(float angle)
-    {
-        // Front / right / back / left = Sound1 / 2 / 3 / 4
-        Sound1On = Sound2On = Sound3On = Sound4On = false;
-        Sound5On = Sound6On = Sound7On = Sound8On = false;
-
-        if (angle >= -45f && angle <= 45f)              Sound1On = true;
-        else if (angle > 45f && angle <= 135f)          Sound2On = true;
-        else if (angle > 135f || angle <= -135f)        Sound3On = true;
-        else if (angle > -135f && angle < -45f)         Sound4On = true;
-    }
-
-    // ---- GUARDIAN STING (Step 4) ----
-    void EmitGuardianSting()
-    {
-        // Warm + wind + sound, briefly, to signal "a guardian joined you"
-        TurnOnHeatTOWERFRONT = true;
-        TurnOnHeatTOWERBACK  = true;  // 2 towers max, OK
-        TurnOnHeaterLEFT        = TurnOnHeatTOWERLEFT;
-        TurnOnHeaterLEFTMIDDLE  = TurnOnHeatTOWERRIGHT;
-        TurnOnHeaterRIGHTMIDDLE = TurnOnHeatTOWERBACK;
-        TurnOnHeaterRIGHT       = TurnOnHeatTOWERFRONT;
-
-        Hairdryer1Ventilator = HAIRDRYER_MIN_PWM;
-        Hairdryer2Ventilator = HAIRDRYER_MIN_PWM;
-
-        Sound1On = Sound5On = false;
-        Sound8On = true; // distinct sting
-    }
-
-    // ============================================================
-    //  HELPERS
-    // ============================================================
     private float CalculateAngleToDangerZone(Vector3 LocationDZ)
     {
         Vector3 direction = LocationDZ - RowBoatPrefab.transform.position;
@@ -449,40 +322,26 @@ public class NavigationalStrategy_ADAPTME : MonoBehaviour
         return Mathf.Repeat(signedAngle + 360f, 360f);
     }
 
-    // ============================================================
-    //  STEP 8 — CSV LOGGING
-    // ============================================================
-    public void WriteCSV()
+    public void WriteCSV() // This void will write all relevant data to an Excel file saved in the folder 'SavedData'. This CSV is now updated at every second (see the Update() void). You can adapt this to better capture relevant data from your trial.
     {
+        // First write the header of each column
         if (!File.Exists(filename))
         {
             using (TextWriter tw = new StreamWriter(filename, false))
             {
-                tw.WriteLine("Date;Time;TimestampMs;Group;ActiveCheckpoint;" +
-                             "AngleToTarget;DistToTarget;" +
-                             "HeatUnlocked;AirflowUnlocked;AudioUnlocked;" +
-                             "DangerZoneHits;" +
-                             "BoatX;BoatY;BoatZ");
+                tw.WriteLine("Date;Time;Timestamp in milliseconds;Group name;Angle of lighthouse w.r.t. the boat; Position boat - x; Position boat - y; Position boat - z");
             }
         }
 
-        int TimeStampMilliseconds =
-            (((DateTime.Now.Hour * 3600) + (DateTime.Now.Minute * 60) + DateTime.Now.Second) * 1000)
-            + DateTime.Now.Millisecond - startingTimeMillisec;
-
-        Vector3 boat = RowBoatPrefab.transform.position;
-        Vector3 tgt  = GetCurrentTargetPosition();
-        float distToTarget = Vector3.Distance(tgt, boat);
-
+        // Then write the data
         using (TextWriter tw = new StreamWriter(filename, true))
         {
-            tw.WriteLine(
-                $"{DateTime.Now:dd-MM-yyyy};{DateTime.Now:HH:mm:ss};{TimeStampMilliseconds};" +
-                $"{GroupName};{activeCheckpointIndex};" +
-                $"{PrivateAngleOfCurrentTarget:F2};{distToTarget:F2};" +
-                $"{(heatUnlocked ? 1 : 0)};{(airflowUnlocked ? 1 : 0)};{(audioUnlocked ? 1 : 0)};" +
-                $"{dangerZoneHits};" +
-                $"{boat.x:F2};{boat.y:F2};{boat.z:F2}");
+            string date = DateTime.Now.ToString("dd-MM-yyyy");
+            string time = DateTime.Now.ToString("HH:mm:ss");
+            int TimeStampMilliseconds = (((DateTime.Now.Hour * 3600) + (DateTime.Now.Minute * 60) + DateTime.Now.Second) * 1000) + DateTime.Now.Millisecond - startingTimeMillisec; // Current time in milliseconds minus the starting time in milliseconds
+
+            tw.WriteLine($"{date};{time};{TimeStampMilliseconds};{GroupName};{PrivateAngleOfLighthouseToBoat};{eventManager.GetComponent<TargetLocator>().updatePositionBoat.x};{eventManager.GetComponent<TargetLocator>().updatePositionBoat.y};{eventManager.GetComponent<TargetLocator>().updatePositionBoat.z}");
         }
     }
+
 }
