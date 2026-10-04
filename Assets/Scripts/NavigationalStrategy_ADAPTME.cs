@@ -30,7 +30,7 @@ public class NavigationalStrategy_ADAPTME : MonoBehaviour
     private float distanceBoatToDangerZone; // Variable already created for you for convenience: a measure of how far the boat is to the danger zones (so you might issue a warning to your user to change course...)
     private float angleBoatToDangerZone;
     private float[] dangerZoneDistances;
-    public int TriggerDistanceDangerZone = 20;
+    public int TriggerDistanceDangerZone = 10;
 
     /* --------------------------------------------------------
      * BELOW ARE THE VARIABLES THAT CAN TURN ON SPECIFIC PARTS OF THE HARDWARE
@@ -78,6 +78,16 @@ public class NavigationalStrategy_ADAPTME : MonoBehaviour
 
 
     //personal new vars
+    public Transform songSphere;   // the sphere playing the song (e.g. Sound2)
+    public float songDistance = 3f;     // how far from the boat the song sits
+
+    void SetSoundOnly(int n)
+    {
+        Sound1On = (n == 1); Sound2On = (n == 2); Sound3On = (n == 3); Sound4On = (n == 4);
+        Sound5On = (n == 5); Sound6On = (n == 6); Sound7On = (n == 7); Sound8On = (n == 8);
+    }
+    private int[] zoneSound = { 1, 5, 6, 6, 7, 7, 8, 3, 5, 6, 7 };
+    private AudioSource songSource;      // with your other fields
     void Awake()
     {
         Debug.Log($"Trial started for group: {GroupName}"); 
@@ -105,7 +115,7 @@ public class NavigationalStrategy_ADAPTME : MonoBehaviour
         DangerZoneLocations.Add(eventManager.GetComponent<TargetLocator>().DangerZone11.transform.position);
 
         dangerZoneDistances = new float[DangerZoneLocations.Count];
-
+        if (songSphere != null) songSource = songSphere.GetComponent<AudioSource>();//setting this for ability to use mute func
     }
 
     /* CALLING SPECIFIC DANGER ZONES
@@ -134,6 +144,12 @@ public class NavigationalStrategy_ADAPTME : MonoBehaviour
         //Debug.Log($"The angle of the lighthouse with respect to the boat is: {eventManager.GetComponent<TargetLocator>().angleOfLighthouseToBoat:F2}"); // Example of how you can print what the relative angle of the lighthouse is. This cloggs up the console, so comment this out for readability of the other print statements
         PrivateAngleOfLighthouseToBoat = eventManager.GetComponent<TargetLocator>().angleOfLighthouseToBoat; // Put it in our local shorthand. Note: this is an unnecessary step as we can continuously get the value directly from the TargetLocator script, but to avoid typo's and reference mistakes we make the transfer here.
         
+        if (songSphere != null)
+        {
+            Vector3 dir = Quaternion.AngleAxis(PrivateAngleOfLighthouseToBoat, Vector3.up) * RowBoatPrefab.transform.forward;
+            songSphere.position = RowBoatPrefab.transform.position + dir * songDistance;
+        }
+
         /* INTERPRETING THE PrivateAngleOfLighthouseToBoat VARIABLE
          * The PrivateAngleOfLighthouseToBoat variable provides a value between -180 and +180. Between -180 and 0 are the angles to the left of the boat; 0 to +180 are to the right of the boat.
          * So if we want to have the correct heater on to steer a user according to where the tower is; we can turn on specific heat sources when we have a specific angle. Because of the placement of the heaters
@@ -152,15 +168,6 @@ public class NavigationalStrategy_ADAPTME : MonoBehaviour
                     TurnOnHeatTOWERBACK = false;
                     TurnOnHeatTOWERLEFT = false;
                     
-                    // Example sound:
-                    Sound1On = true;
-                    Sound2On = false;
-                    Sound3On = false;
-                    Sound4On = false;
-                    Sound5On = false;
-                    Sound6On = false;
-                    Sound7On = false;
-                    Sound8On = false;
                 }
                 else if (PrivateAngleOfLighthouseToBoat > 45.0f && PrivateAngleOfLighthouseToBoat <= 135.0f)
                 {
@@ -169,15 +176,6 @@ public class NavigationalStrategy_ADAPTME : MonoBehaviour
                     TurnOnHeatTOWERBACK = false;
                     TurnOnHeatTOWERLEFT = false;
 
-                    // Example sound
-                    Sound1On = false;
-                    Sound2On = true;
-                    Sound3On = false;
-                    Sound4On = false;
-                    Sound5On = false;
-                    Sound6On = false;
-                    Sound7On = false;
-                    Sound8On = false;
                 }
 
                 else if (PrivateAngleOfLighthouseToBoat > 135.0f || PrivateAngleOfLighthouseToBoat <= -135.0f)
@@ -187,15 +185,6 @@ public class NavigationalStrategy_ADAPTME : MonoBehaviour
                     TurnOnHeatTOWERBACK = true; // This is the heater we want to turn on
                     TurnOnHeatTOWERLEFT = false;
 
-                    // Example sound
-                    Sound1On = false;
-                    Sound2On = false;
-                    Sound3On = true;
-                    Sound4On = false;
-                    Sound5On = false;
-                    Sound6On = false;
-                    Sound7On = false;
-                    Sound8On = false;
                 }
                 else if (PrivateAngleOfLighthouseToBoat > -135.0f && PrivateAngleOfLighthouseToBoat < -45.0f)
                 {
@@ -204,15 +193,6 @@ public class NavigationalStrategy_ADAPTME : MonoBehaviour
                     TurnOnHeatTOWERBACK = false;
                     TurnOnHeatTOWERLEFT = true; // This is the heater we want to turn on
 
-                    // Example sound
-                    Sound1On = false;
-                    Sound2On = false;
-                    Sound3On = false;
-                    Sound4On = true;
-                    Sound5On = false;
-                    Sound6On = false;
-                    Sound7On = false;
-                    Sound8On = false;
                 }
 
                 // Ignore processing step below
@@ -247,7 +227,7 @@ public class NavigationalStrategy_ADAPTME : MonoBehaviour
             // Check if we're close to this danger zone
             if (distanceBoatToDangerZone < TriggerDistanceDangerZone)
             {
-                Debug.Log("We're getting really close to a danger zone... Watch out!");
+                // Debug.Log("We're getting really close to a danger zone... Watch out!");
 
                 // ---------------------------------------------------------
                 // Turning on hairdryers to blow us away from the danger
@@ -282,6 +262,25 @@ public class NavigationalStrategy_ADAPTME : MonoBehaviour
             }
         }
 
+        
+        int nearestZone = -1;
+        float nearestDist = TriggerDistanceDangerZone;
+        for (int i = 0; i < dangerZoneDistances.Length; i++)
+        {
+            if (dangerZoneDistances[i] < nearestDist)
+            {
+                nearestDist = dangerZoneDistances[i];
+                nearestZone = i;
+            }
+        }
+
+        if (nearestZone >= 0) {
+            songSource.mute=true;
+            SetSoundOnly(zoneSound[nearestZone]);
+        }
+        else songSource.mute=false;
+        
+        
         // Check if we should turn off all hairdryers
         bool allDistancesSafe = true;
         foreach (float distance in dangerZoneDistances)
